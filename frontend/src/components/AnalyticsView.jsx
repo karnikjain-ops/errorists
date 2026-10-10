@@ -5,17 +5,21 @@ import { fetchStats } from '../api';
 export default function AnalyticsView() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadStats();
   }, []);
 
   const loadStats = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const data = await fetchStats();
       setStats(data);
     } catch (err) {
       console.error('Failed to load stats:', err);
+      setError(err.message || 'Failed to connect to backend server');
     } finally {
       setLoading(false);
     }
@@ -25,6 +29,27 @@ export default function AnalyticsView() {
     return (
       <div className="py-20 text-center text-slate-400 text-sm">
         Loading civic analytics...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-6xl mx-auto py-12 px-4 sm:px-6">
+        <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 space-y-3">
+          <div className="flex items-center space-x-2">
+            <span className="font-bold text-base">Backend Connection Unavailable</span>
+          </div>
+          <p className="text-xs text-amber-700">
+            Unable to load analytics data ({error}). Please ensure the backend is running at <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">http://localhost:8000</code>.
+          </p>
+          <button
+            onClick={loadStats}
+            className="px-3.5 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition"
+          >
+            Retry Connection
+          </button>
+        </div>
       </div>
     );
   }

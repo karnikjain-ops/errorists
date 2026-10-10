@@ -50,7 +50,7 @@ def process_and_cluster_complaint(
     5. Dynamic Priority re-scoring
     """
     # Step 1: AI Skeleton Extraction
-    extraction = extract_complaint_info(raw_text)
+    extraction = extract_complaint_info(raw_text, has_media=bool(media_url))
 
     # Step 2: Spatial & Category Filter (<= 500 meters)
     candidates = find_candidate_incidents(

@@ -1,5 +1,10 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+import os
+import uuid
+import shutil
+from datetime import datetime
+from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -17,6 +22,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Create uploads directory if it does not exist
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Mount static files to serve uploaded photos
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,6 +44,39 @@ def root():
         "service": "AI Civic Complaint Ingestion & Resolution Engine",
         "docs_url": "/docs"
     }
+
+@app.post("/api/v1/upload")
+async def upload_image(file: UploadFile = File(...)):
+    """
+    Uploads a photo/image file captured from the camera or device.
+    Saves to the uploads directory and returns the accessible URL.
+    """
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"]
+    if file.content_type and not (file.content_type.startswith("image/") or file.content_type in allowed_types):
+        raise HTTPException(status_code=400, detail="Only image files are permitted.")
+
+    ext = "jpg"
+    if file.filename and "." in file.filename:
+        ext = file.filename.rsplit(".", 1)[-1].lower()
+        if ext not in ["jpg", "jpeg", "png", "webp", "gif"]:
+            ext = "jpg"
+
+    unique_filename = f"{uuid.uuid4().hex}_{int(datetime.utcnow().timestamp())}.{ext}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        file_size = os.path.getsize(file_path)
+        return {
+            "url": f"/uploads/{unique_filename}",
+            "filename": unique_filename,
+            "size": file_size,
+            "content_type": file.content_type
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}")
 
 @app.post("/api/v1/complaints/submit", response_model=schemas.ComplaintOut)
 def submit_complaint(complaint: schemas.ComplaintCreate, db: Session = Depends(get_db)):

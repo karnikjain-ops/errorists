@@ -36,18 +36,18 @@ DEPARTMENT_MAP = {
     "other": "General Municipal Services"
 }
 
-def extract_complaint_info(raw_text: str) -> ExtractionResult:
+def extract_complaint_info(raw_text: str, has_media: bool = False) -> ExtractionResult:
     """
     Extracts structured skeleton information and information richness score
     from unstructured civic complaints.
     """
     if genai_client:
         try:
-            return _extract_with_gemini(raw_text)
+            return _extract_with_gemini(raw_text, has_media=has_media)
         except Exception as e:
             print(f"Gemini API error in extract_complaint_info: {e}. Falling back to internal engine.")
 
-    return _extract_heuristic(raw_text)
+    return _extract_heuristic(raw_text, has_media=has_media)
 
 def judge_similarity(summary_a: str, summary_b: str, category: str, distance_meters: float) -> SimilarityJudgeResult:
     """
@@ -64,7 +64,8 @@ def judge_similarity(summary_a: str, summary_b: str, category: str, distance_met
 
 # --- Gemini 1.5 Flash Implementations ---
 
-def _extract_with_gemini(raw_text: str) -> ExtractionResult:
+def _extract_with_gemini(raw_text: str, has_media: bool = False) -> ExtractionResult:
+    media_context = "Photographic/camera evidence is attached with this complaint (+15 pts bonus for visual evidence)." if has_media else "No photographic media attached."
     prompt = f"""
     You are an AI for a Municipal Corporation. Analyze the following civic complaint text and extract structured information.
     Categories allowed: {CATEGORIES}
@@ -73,6 +74,7 @@ def _extract_with_gemini(raw_text: str) -> ExtractionResult:
     - Landmark/location precision mentioned (up to 30 pts)
     - Specific consequence / severity / hazard details (up to 25 pts)
     - Temporal details, e.g. how long it has existed (up to 20 pts)
+    - Photographic evidence presence ({media_context})
     - Clarity and completeness of the description (up to 25 pts)
 
     Raw Complaint: "{raw_text}"
@@ -122,7 +124,7 @@ def _judge_with_gemini(summary_a: str, summary_b: str, category: str, distance_m
 
 # --- Fallback Heuristic Implementation ---
 
-def _extract_heuristic(raw_text: str) -> ExtractionResult:
+def _extract_heuristic(raw_text: str, has_media: bool = False) -> ExtractionResult:
     text_lower = raw_text.lower()
     
     # 1. Category Detection
@@ -149,6 +151,11 @@ def _extract_heuristic(raw_text: str) -> ExtractionResult:
     score = 30  # Baseline
     reasoning_parts = ["Baseline complaint (30 pts)"]
     
+    # Photographic evidence bonus
+    if has_media:
+        score += 15
+        reasoning_parts.append("Verified camera/photographic evidence attached (+15 pts)")
+
     # Landmark precision
     landmark = None
     landmark_match = re.search(r"(?:near|opposite|opp|behind|at|outside|front of|beside)\s+([A-Za-z0-9\s,-]{4,35})", raw_text, re.IGNORECASE)

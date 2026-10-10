@@ -3,9 +3,9 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { 
   AlertCircle, Users, CheckCircle2, Clock, ChevronDown, ChevronUp, 
-  MapPin, RefreshCw, Flame, ExternalLink, ShieldAlert
+  MapPin, RefreshCw, Flame, ExternalLink, ShieldAlert, Camera, ZoomIn, X, ShieldCheck
 } from 'lucide-react';
-import { fetchIncidents, updateIncidentStatus } from '../api';
+import { fetchIncidents, updateIncidentStatus, getMediaUrl } from '../api';
 
 // Custom icons based on category
 const createColoredIcon = (color) => {
@@ -29,18 +29,22 @@ const CATEGORY_COLORS = {
 export default function OfficerDashboard() {
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [expandedIncidentId, setExpandedIncidentId] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
 
   const loadIncidents = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await fetchIncidents(selectedCategory, selectedStatus);
       setIncidents(data);
     } catch (err) {
       console.error('Error fetching incidents:', err);
+      setError(err.message || 'Failed to connect to backend server');
     } finally {
       setLoading(false);
     }
@@ -135,6 +139,25 @@ export default function OfficerDashboard() {
           </button>
         ))}
       </div>
+
+      {/* Backend Disconnection Banner */}
+      {error && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start space-x-3 text-amber-900 shadow-xs">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h4 className="font-semibold text-sm text-amber-900">Backend / Database Connection Unavailable</h4>
+            <p className="text-xs text-amber-700 mt-1">
+              Could not retrieve incidents from the backend API ({error}). Please ensure the FastAPI backend is running at <code className="bg-amber-100 px-1 py-0.5 rounded text-amber-900 font-mono">http://localhost:8000</code>.
+            </p>
+            <button
+              onClick={loadIncidents}
+              className="mt-2.5 px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition"
+            >
+              Retry Connection
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Map & List Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -251,6 +274,41 @@ export default function OfficerDashboard() {
                         <p className="text-xs text-slate-700 italic bg-white p-2.5 rounded-lg border border-slate-200/60 leading-relaxed">
                           "{canonical.raw_text}"
                         </p>
+
+                        {canonical.media_url && (
+                          <div className="flex items-center space-x-3 bg-white p-2.5 rounded-lg border border-slate-200/80">
+                            <div
+                              onClick={() => setPreviewImage({
+                                url: canonical.media_url,
+                                title: canonical.raw_text,
+                                lat: canonical.latitude,
+                                lng: canonical.longitude,
+                                time: canonical.created_at,
+                                user: canonical.user_name
+                              })}
+                              className="relative w-12 h-12 rounded-lg overflow-hidden bg-black shrink-0 cursor-pointer group"
+                            >
+                              <img
+                                src={getMediaUrl(canonical.media_url)}
+                                alt="Photographic Proof"
+                                className="w-full h-full object-cover group-hover:scale-105 transition"
+                              />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
+                                <ZoomIn className="w-3.5 h-3.5" />
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-[11px] font-bold text-slate-800 flex items-center space-x-1">
+                                <Camera className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>Geotagged Photo Evidence Attached</span>
+                              </span>
+                              <span className="text-[10px] text-slate-500 block truncate">
+                                Click thumbnail to view high-resolution geotagged evidence
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex items-center justify-between text-[11px] text-slate-400">
                           <span>Channel: {canonical.source}</span>
                           <span>Lat: {canonical.latitude.toFixed(4)}, Lng: {canonical.longitude.toFixed(4)}</span>
@@ -329,6 +387,23 @@ export default function OfficerDashboard() {
                               <span>Richness Score: {comp.richness_score}/100</span>
                             </div>
                             <p className="text-slate-600">"{comp.raw_text}"</p>
+                            {comp.media_url && (
+                              <button
+                                type="button"
+                                onClick={() => setPreviewImage({
+                                  url: comp.media_url,
+                                  title: comp.raw_text,
+                                  lat: comp.latitude,
+                                  lng: comp.longitude,
+                                  time: comp.created_at,
+                                  user: comp.user_name
+                                })}
+                                className="mt-1 flex items-center space-x-1.5 text-indigo-600 hover:text-indigo-800 font-semibold text-[11px]"
+                              >
+                                <Camera className="w-3.5 h-3.5" />
+                                <span>View Photo Evidence</span>
+                              </button>
+                            )}
                             <span className="text-[10px] text-slate-400 block pt-1">
                               Logged: {new Date(comp.created_at).toLocaleTimeString()} • Lat: {comp.latitude.toFixed(4)}, Lng: {comp.longitude.toFixed(4)}
                             </span>
@@ -343,6 +418,61 @@ export default function OfficerDashboard() {
           )}
         </div>
       </div>
+
+      {/* Officer Inspection Image Lightbox */}
+      {previewImage && (
+        <div 
+          onClick={() => setPreviewImage(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fadeIn"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-4xl max-h-[90vh] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col w-full"
+          >
+            <div className="p-3.5 border-b border-slate-800 flex items-center justify-between text-white bg-slate-900/90">
+              <div className="flex items-center space-x-2 text-xs">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span className="font-semibold">Geotagged Civic Evidence</span>
+                {previewImage.user && (
+                  <span className="text-slate-400">submitted by {previewImage.user}</span>
+                )}
+              </div>
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-2 flex items-center justify-center bg-black min-h-[300px]">
+              <img
+                src={getMediaUrl(previewImage.url)}
+                alt="Enlarged Evidence"
+                className="max-h-[72vh] w-auto max-w-full object-contain rounded-lg"
+              />
+            </div>
+
+            <div className="p-3 bg-slate-900 border-t border-slate-800 text-xs space-y-1.5 text-slate-400">
+              {previewImage.title && (
+                <p className="text-slate-200 text-xs italic">
+                  "{previewImage.title}"
+                </p>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800 text-[11px]">
+                <div className="flex items-center space-x-1.5 text-slate-300">
+                  <MapPin className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Lat: {Number(previewImage.lat).toFixed(5)}, Lng: {Number(previewImage.lng).toFixed(5)}</span>
+                </div>
+                <div className="flex items-center space-x-1.5 text-slate-300">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Captured / Logged: {new Date(previewImage.time).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

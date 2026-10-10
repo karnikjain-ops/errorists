@@ -1,4 +1,40 @@
-const API_BASE = "http://localhost:8000/api/v1";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
+
+export function getMediaUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url;
+  }
+  const rootUrl = API_BASE.replace(/\/api\/v1\/?$/, '');
+  return `${rootUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+export async function uploadImage(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(`${API_BASE}/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(errorText || 'Failed to upload image');
+  }
+
+  return res.json();
+}
+
+export async function checkHealth() {
+  try {
+    const rootUrl = API_BASE.replace(/\/api\/v1\/?$/, '');
+    const res = await fetch(`${rootUrl}/`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 export async function submitComplaint(data) {
   const res = await fetch(`${API_BASE}/complaints/submit`, {
